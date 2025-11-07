@@ -375,7 +375,7 @@ def do_login(user: str, password: str):
         return (
             gr.update(),
             gr.update(),
-            gr.Markdown(
+            gr.Text(
                 "Por favor, ingresa usuario y contraseña.",
                 elem_id="login-message",
                 elem_classes=["error"],
@@ -441,50 +441,57 @@ with gr.Blocks(title="Chatbot GEMIS", theme=gemis_theme, css=custom_css) as demo
     auth = gr.BrowserState({"username": None, "ttl": 0})
 
     # Login Screen
-    with gr.Row(elem_id="login-wrapper", visible=True) as login_column:
-        with gr.Column(elem_id="login-logo-container"):
-            gr.Image(
-                value="/home/moya/Langchain-chatbot/assets/gemis-logo.png",
-                width=280,
-                show_label=False,
-                show_download_button=False,
-                show_share_button=False,
-                show_fullscreen_button=False,
-                container=False,
-                elem_id="login-logo",
+    with gr.Column(elem_id="login-wrapper", visible=True) as login_column:
+        with gr.Row(elem_id=""):
+            gr.HTML(
+                """
+                <center> 
+                <h1 class="gemis-title"> Bienvenido a <span>Gemis Chatbot</span></h1>
+                </center>
+                """
             )
-        with gr.Column(elem_id="login-card"):
-            gr.Markdown("# Iniciar sesión")
-            gr.HTML("<p class='subtitle'>Ingresá tus credenciales para continuar</p>")
+        with gr.Row():
+            with gr.Column(elem_id="login-logo-container"):
+                gr.Image(
+                    value="/home/moya/Langchain-chatbot/assets/gemis-logo.png",
+                    show_label=False,
+                    show_download_button=False,
+                    show_share_button=False,
+                    show_fullscreen_button=False,
+                    container=False,
+                    elem_id="login-logo",
+                )
+            with gr.Column(elem_id="login-card"):
+                gr.Markdown("# Iniciar sesión")
+ 
+                gr.Markdown("Nombre de usuario")
+                user = gr.Textbox(
+                    elem_id="login-username",
+                    label="Nombre de usuario",
+                    value="",
+                    type="text",
+                    max_lines=1,
+                    container=False,
+                    elem_classes=["username-input"],
+                )
 
-            gr.Markdown("Nombre de usuario")
-            user = gr.Textbox(
-                elem_id="login-username",
-                label="Nombre de usuario",
-                value="",
-                type="text",
-                max_lines=1,
-                container=False,
-                elem_classes=["username-input"],
-            )
+                gr.Markdown("Contraseña")
+                pwd = gr.Textbox(
+                    elem_id="login-password",
+                    label="Contraseña",
+                    type="password",
+                    lines=1,
+                    container=False,
+                )
 
-            gr.Markdown("Contraseña")
-            pwd = gr.Textbox(
-                elem_id="login-password",
-                label="Contraseña",
-                type="password",
-                lines=1,
-                container=False,
-            )
-
-            login_btn = gr.Button(
-                "Ingresar",
-                elem_id="login-btn",
-                variant="primary",
-                size="md",
-                icon="./assets/key-round.svg",
-            )
-            login_msg = gr.Markdown("", elem_id="login-message")
+                login_btn = gr.Button(
+                    "Ingresar",
+                    elem_id="login-btn",
+                    variant="primary",
+                    size="md",
+                    icon="./assets/key-round.svg",
+                )
+                login_msg = gr.Markdown("", elem_id="login-message")
 
     # Main Chat Interface
     with gr.Blocks(fill_height=True):
@@ -538,8 +545,8 @@ with gr.Blocks(title="Chatbot GEMIS", theme=gemis_theme, css=custom_css) as demo
                 gr.Markdown("---")
                 logout_btn = gr.Button(
                     "Cerrar sesión",
-                    size="md",
-                    variant="secondary",
+                    size="sm",
+                    variant="stop",
                     icon="./assets/log-out.svg",
                     elem_id="logout-btn",
                 )
