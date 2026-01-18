@@ -1,6 +1,6 @@
-# Langchain Chatbot
+# Gemis Chatbot
 
-Chatbot en progreso para **Retrieval Augmented Generation (RAG) y preguntas y respuestas sobre documentos** usando **LangChain y LangGraph ** y un frontend con **Gradio** para probar rápidamente.
+Chatbot para **Retrieval Augmented Generation (RAG) y preguntas y respuestas sobre documentos** usando **LangChain y LangGraph ** y un frontend con **Gradio** para probar rápidamente.
 
 > **Objetivo:** permitir que un usuario cargue un documento, se indexe en un vector store y hacer preguntas al LLM con recuperación de pasajes relevantes.
 
