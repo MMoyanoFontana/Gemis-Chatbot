@@ -1,12 +1,12 @@
-# Multi-user Chroma (Option A): single collection + per-user/per-thread filters
-# - Persistent vector store (no ingestion here)
-# - Tool enforces {user_id, thread_id} from server context (not user input)
+# Sistema multi-usuario Chroma: colección única + filtros por usuario/hilo
+# - Vector store persistente
+# - La herramienta aplica {user_id, thread_id} desde el contexto del servidor (no input de usuario)
 # - Sistema de memorias de usuario
-# - Plug-and-play with your existing LangGraph workflow
 
 import sqlite3
 import dotenv
 import json
+import logging
 from typing import List, Literal, Dict, Any
 
 from langchain_core.tools import tool
@@ -24,6 +24,9 @@ from langchain_classic.storage import create_kv_docstore
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
+
+# Configuración de Logging
+logger = logging.getLogger(__name__)
 
 dotenv.load_dotenv()
 
@@ -184,8 +187,8 @@ def format_memories_for_context(memories: Dict[str, str]) -> str:
 @tool
 def retriever_tool(query: str, config: RunnableConfig, k: int = 4) -> List[Document]:
     """
-    Retrieve relevant documents for the current request's user/thread.
-    NOTE: user_id/thread_id are resolved from server context, not from user input.
+    Recupera documentos relevantes para el usuario/hilo actual.
+    NOTA: user_id/thread_id se resuelven del contexto del servidor, no del input del usuario.
     """
     filter = {
         "$and": [
@@ -217,13 +220,13 @@ def extract_memories_node(state: MessagesState, config: RunnableConfig):
     if last_user_message:
         extracted = extract_and_save_memories(last_user_message, user_id)
         if extracted:
-            print(f"Memorias extraídas para usuario {user_id}: {extracted}")
+            logger.info(f"Memorias extraídas para usuario {user_id}: {extracted}")
 
     return state
 
 
 def generate_query_or_respond(state: MessagesState, config: RunnableConfig):
-    """Ask the model; it will decide to call the retriever tool or answer directly."""
+    """Consulta al modelo; decidirá si llamar a la herramienta de recuperación o responder directamente."""
     user_id = int(config["configurable"].get("user_id"))
 
     # Obtener memorias del usuario
@@ -300,7 +303,7 @@ REWRITE_PROMPT = (
 
 
 def rewrite_question(state: MessagesState):
-    """Rewrite the original user question."""
+    """Reescribe la pregunta original del usuario."""
     messages = state["messages"]
     question = messages[0].content
     prompt = REWRITE_PROMPT.format(question=question)
@@ -320,7 +323,7 @@ GENERATE_PROMPT = (
 
 
 def generate_answer(state: MessagesState, config: RunnableConfig):
-    """Generate an answer with user memories context."""
+    """Genera una respuesta con el contexto de las memorias del usuario."""
     user_id = int(config["configurable"].get("user_id"))
 
     question = ""

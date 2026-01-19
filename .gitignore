@@ -30,7 +30,6 @@ chroma_db/
 *.sqlite3
 *.db*
 checkpoints/
-parent/
-assets/
+parent/ 
 chroma_multi/
 .gradio/

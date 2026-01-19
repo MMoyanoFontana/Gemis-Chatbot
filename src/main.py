@@ -2,7 +2,9 @@ import gradio as gr
 import time
 import os
 import shutil
+import logging
 from pathlib import Path
+from typing import List, Tuple, Optional, Dict, Any, Union
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
 from langchain_community.document_loaders import PyMuPDFLoader
@@ -27,14 +29,21 @@ from graph import graph, retriever
 from gradio import ChatMessage
 from style import gemis_theme, custom_css
 
-# Constants
+# Configuración de Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# Constantes
 MAX_FILE_SIZE_MB = 10
 ALLOWED_FILE_TYPES = [".pdf"]
-SESSION_TIMEOUT = 3600  # 1 hour
+SESSION_TIMEOUT = 3600  # 1 hora
 
 
-def _to_history(message) -> ChatMessage | None:
-    """Convert database message to ChatMessage format."""
+def _to_history(message: Dict[str, Any]) -> Optional[ChatMessage]:
+    """Convierte un mensaje de la base de datos al formato ChatMessage de Gradio."""
     try:
         if message["type"] == "file":
             return ChatMessage(
@@ -43,12 +52,12 @@ def _to_history(message) -> ChatMessage | None:
         elif message is not None:
             return ChatMessage(role=message["role"], content=message["content"])
     except Exception as e:
-        print(f"Error converting message to history: {e}")
+        logger.error(f"Error convirtiendo mensaje al historial: {e}")
     return None
 
 
-def _reload_chats(uid: int):
-    """Reload user's chat list."""
+def _reload_chats(uid: int) -> gr.update:
+    """Recarga la lista de chats del usuario."""
     threads = list_chats(uid)
     if len(threads) == 0:
         chat_id = create_chat(uid, "Chat 1")
@@ -59,18 +68,18 @@ def _reload_chats(uid: int):
         choices = [
             (f"{t.get('title', 'Sin título')}", t.get("thread_id")) for t in threads
         ]
-        choices = choices
     return gr.update(choices=choices, value=tid)
 
 
-def _reload(user: dict):
-    """Reload user session and chat history."""
+def _reload(user: Dict[str, Any]) -> Tuple[Any, Any, Any, Any]:
+    """Recarga la sesión del usuario y el historial del chat."""
     if user is None or user.get("username") is None or user.get("ttl", 0) < time.time():
         return gr.update(), None, None, gr.update(choices=[], value=None)
 
     try:
         username = user.get("username")
         uid = get_user_id(username)
+        # Check: No emojis in text
         placeholder = f"Hola, {username.capitalize()} ¿En qué puedo ayudarte hoy?"
 
         threads = list_chats(uid)
@@ -83,7 +92,6 @@ def _reload(user: dict):
             choices = [
                 (f"{t.get('title', 'Sin título')}", t.get("thread_id")) for t in threads
             ]
-            choices = choices
 
         cfg = RunnableConfig({"configurable": {"thread_id": tid, "user_id": uid}})
         hist = load_persisted_chat_history(cfg)
@@ -95,17 +103,17 @@ def _reload(user: dict):
             gr.update(choices=choices, value=tid),
         )
     except Exception as e:
-        print(f"Error reloading session: {e}")
+        logger.error(f"Error recargando sesión: {e}")
         return gr.update(), None, None, gr.update(choices=[], value=None)
 
 
-def _new_chat(user_id):
-    """Create a new chat thread."""
+def _new_chat(user_id: int) -> Tuple[Any, Any, Any, Any]:
+    """Crea un nuevo hilo de chat."""
     try:
         threads = list_chats(user_id)
         dd_choices = [(f"{t.get('title', '')}", t.get("thread_id")) for t in threads]
 
-        # Find next available chat number
+        # Busca el siguiente número disponible para el chat
         idx = 1
         base = "Chat"
         while f"{base} {idx}" in [c[0] for c in dd_choices]:
@@ -124,13 +132,13 @@ def _new_chat(user_id):
             gr.update(value=[]),
         )
     except Exception as e:
-        print(f"Error creating new chat: {e}")
+        logger.error(f"Error creando nuevo chat: {e}")
         gr.Warning("No se pudo crear el nuevo chat. Por favor, intenta nuevamente.")
         return gr.update(), gr.update(), gr.update(), gr.update()
 
 
-def _delete_chat(user_id, thread_id):
-    """Delete current chat with error handling."""
+def _delete_chat(user_id: int, thread_id: str) -> Tuple[Any, Any, Any, Any]:
+    """Borra el chat actual manejando errores."""
     try:
         delete_chat_by_thread(thread_id)
         remaining_threads = list_chats(user_id)
@@ -149,44 +157,44 @@ def _delete_chat(user_id, thread_id):
         else:
             return _new_chat(user_id)
     except Exception as e:
-        print(f"Error deleting chat: {e}")
+        logger.error(f"Error borrando chat: {e}")
         gr.Warning("No se pudo eliminar el chat. Por favor, intenta nuevamente.")
         return gr.update(), gr.update(), gr.update(), gr.update()
 
 
-def get_files(tid):
-    """Get files for current chat with better formatting."""
+def get_files(tid: str) -> List[str]:
+    """Obtiene archivos para el chat actual."""
     try:
         chat_id = get_chat_id_by_thread(tid)
         archivos = get_files_by_chat_id(chat_id)
-        # Devolvemos rutas absolutas/validas en disco
+        # Devolvemos rutas absolutas/válidas en disco
         paths = []
         for a in archivos:
-            # a["stored_path"] ya debería ser una Path o string guardada en DB
+            # a["stored_path"] debería ser una ruta almacenada en DB
             p = str(a["stored_path"])
             if os.path.exists(p):
                 paths.append(p)
         return paths
     except Exception as e:
-        print(f"Error getting files: {e}")
+        logger.error(f"Error obteniendo archivos: {e}")
         return []
 
 
-def _switch_chat(tid, user_id):
-    """Switch to different chat thread."""
+def _switch_chat(tid: str, user_id: int) -> Tuple[Any, str, List[str]]:
+    """Cambia al hilo de chat seleccionado."""
     try:
         cfg = RunnableConfig({"configurable": {"thread_id": tid, "user_id": user_id}})
         hist = load_persisted_chat_history(cfg)
         archivos = get_files(tid)
         return hist, tid, archivos
     except Exception as e:
-        print(f"Error switching chat: {e}")
+        logger.error(f"Error cambiando de chat: {e}")
         gr.Warning("No se pudo cargar el chat. Por favor, intenta nuevamente.")
         return gr.update(), gr.update(), gr.update()
 
 
-def load_persisted_chat_history(config: RunnableConfig) -> list[dict[str, str]]:
-    """Load chat history from database."""
+def load_persisted_chat_history(config: RunnableConfig) -> List[ChatMessage]:
+    """Carga el historial de chat desde la base de datos."""
     try:
         if not config["configurable"].get("thread_id"):
             return []
@@ -197,12 +205,12 @@ def load_persisted_chat_history(config: RunnableConfig) -> list[dict[str, str]]:
 
         return [h for h in (_to_history(m) for m in persisted) if h is not None]
     except Exception as e:
-        print(f"Error loading chat history: {e}")
+        logger.error(f"Error cargando historial de chat: {e}")
         return []
 
 
-def validate_file(file_path: str) -> tuple[bool, str]:
-    """Validate uploaded file."""
+def validate_file(file_path: str) -> Tuple[bool, str]:
+    """Valida el archivo subido (extensión y tamaño)."""
     # Check file extension
     if not any(file_path.lower().endswith(ext) for ext in ALLOWED_FILE_TYPES):
         return (
@@ -224,8 +232,8 @@ def validate_file(file_path: str) -> tuple[bool, str]:
     return True, ""
 
 
-def add_message(history, message):
-    """Add user message to chat history."""
+def add_message(history: List[Any], message: Dict[str, Any]) -> Tuple[List[Any], gr.MultimodalTextbox, Dict[str, Any]]:
+    """Agrega el mensaje del usuario al historial."""
     try:
         for x in message["files"]:
             history.append({"role": "user", "content": gr.File(value=x)})
@@ -233,13 +241,13 @@ def add_message(history, message):
             history.append({"role": "user", "content": message["text"]})
         return history, gr.MultimodalTextbox(value=None, interactive=False), message
     except Exception as e:
-        print(f"Error adding message: {e}")
+        logger.error(f"Error agregando mensaje: {e}")
         gr.Warning("Error al procesar el mensaje.")
         return history, gr.MultimodalTextbox(value=None, interactive=True), message
 
 
-def bot(history, message, thread_id, user_id):
-    """Process user message and generate bot response."""
+def bot(history: List[Any], message: Dict[str, Any], thread_id: str, user_id: int) -> Tuple[List[Any], List[str]]:
+    """Procesa el mensaje del usuario y genera la respuesta del bot."""
     try:
         touch_chat(thread_id)
         config = RunnableConfig(
@@ -273,7 +281,7 @@ def bot(history, message, thread_id, user_id):
 
                     # Sanitize and save file
                     safe_filename = Path(path).name
-                    save_dir = f"/home/moya/Langchain-chatbot/test_data/{user_id}/thread_{thread_id}"
+                    save_dir = f"test_data/{user_id}/thread_{thread_id}"
                     save_path = os.path.join(save_dir, safe_filename)
 
                     os.makedirs(save_dir, exist_ok=True)
@@ -311,7 +319,6 @@ def bot(history, message, thread_id, user_id):
         should_generate_title = (len(history) == 1 or len(history) == 2) and (
             user_message.strip() != "" or uploaded_files
         )
-        # Handle file-only uploads
         if uploaded_files and user_message.strip() == "":
             if should_generate_title:
                 title = _generate_title_openai(f"files: {uploaded_files}")
@@ -327,7 +334,6 @@ def bot(history, message, thread_id, user_id):
             )
             return history, get_files(thread_id)
 
-        # Get bot response
         if user_message.strip():
             result = graph.invoke(
                 {"messages": [HumanMessage(content=user_message)]}, config
@@ -340,7 +346,6 @@ def bot(history, message, thread_id, user_id):
 
             history = history + [{"role": "assistant", "content": answer}]
 
-            # Persist messages
             persist_message(
                 content=user_message,
                 role="user",
@@ -363,14 +368,14 @@ def bot(history, message, thread_id, user_id):
         return history, get_files(thread_id)
 
     except Exception as e:
-        print(f"Error in bot function: {e}")
+        logger.error(f"Error en función bot: {e}")
         error_msg = "Lo siento, ocurrió un error al procesar tu mensaje. Por favor, intenta nuevamente."
         history = history + [{"role": "assistant", "content": error_msg}]
         return history, get_files(thread_id)
 
 
-def do_login(user: str, password: str):
-    """Handle user login."""
+def do_login(user: str, password: str) -> Tuple[gr.update, gr.update, Union[gr.Text, gr.Markdown], Dict[str, Any]]:
+    """Maneja el inicio de sesión del usuario."""
     if not user or not password:
         return (
             gr.update(),
@@ -404,8 +409,8 @@ def do_login(user: str, password: str):
     )
 
 
-def do_logout(user_id):
-    """Handle user logout."""
+def do_logout(user_id: int) -> Tuple[gr.update, gr.update, gr.Markdown, Dict[str, Any]]:
+    """Maneja el cierre de sesión."""
     return (
         gr.update(visible=True),
         gr.update(visible=False),
@@ -414,8 +419,8 @@ def do_logout(user_id):
     )
 
 
-def restore_session(stored_user: dict):
-    """Restore user session on page load."""
+def restore_session(stored_user: Dict[str, Any]) -> Tuple[gr.update, gr.update, str, gr.update]:
+    """Restaura la sesión del usuario al cargar la página."""
     if (
         stored_user is None
         or stored_user.get("username") is None
@@ -431,16 +436,17 @@ def restore_session(stored_user: dict):
     return (
         gr.update(visible=False),
         gr.update(visible=True),
-        f"Hola, **{stored_user.get('username')}** 👋",
+        # Removed emoji per user request
+        f"Hola, **{stored_user.get('username')}**",
         gr.update(),
     )
 
 
-# Main Gradio Interface
+# Interfaz Principal de Gradio
 with gr.Blocks(title="Chatbot GEMIS", theme=gemis_theme, css=custom_css) as demo:
     auth = gr.BrowserState({"username": None, "ttl": 0})
 
-    # Login Screen
+    # Pantalla de Login
     with gr.Column(elem_id="login-wrapper", visible=True) as login_column:
         with gr.Row(elem_id=""):
             gr.HTML(
@@ -453,7 +459,7 @@ with gr.Blocks(title="Chatbot GEMIS", theme=gemis_theme, css=custom_css) as demo
         with gr.Row():
             with gr.Column(elem_id="login-logo-container"):
                 gr.Image(
-                    value="/home/moya/Langchain-chatbot/assets/gemis-logo.png",
+                    value="assets/gemis-logo.png",
                     show_label=False,
                     show_download_button=False,
                     show_share_button=False,
@@ -493,7 +499,7 @@ with gr.Blocks(title="Chatbot GEMIS", theme=gemis_theme, css=custom_css) as demo
                 )
                 login_msg = gr.Markdown("", elem_id="login-message")
 
-    # Main Chat Interface
+    # Interfaz Principal del Chat
     with gr.Blocks(fill_height=True):
         user_id = gr.State(None)
         thread_id = gr.State(None)
@@ -503,8 +509,10 @@ with gr.Blocks(title="Chatbot GEMIS", theme=gemis_theme, css=custom_css) as demo
             with gr.Sidebar(width=420):
                 with gr.Row(elem_id="sidebar-logo-container"):
                     gr.Image(
-                        value="./assets/gemis-logo.png",
+                        value="assets/gemis-logo.png",
                         container=False,
+                        height=100,
+                        width=200,
                         show_download_button=False,
                         show_share_button=False,
                         show_fullscreen_button=False,
@@ -529,7 +537,7 @@ with gr.Blocks(title="Chatbot GEMIS", theme=gemis_theme, css=custom_css) as demo
                     label=None,
                     interactive=True,
                     container=False,
-                    elem_id="chat-list",  # para aplicar CSS estilo ChatGPT
+                    elem_id="chat-list", 
                 )
 
                 gr.Markdown("### Archivos en este chat")
@@ -572,7 +580,7 @@ with gr.Blocks(title="Chatbot GEMIS", theme=gemis_theme, css=custom_css) as demo
                     file_types=[".pdf"],
                 )
 
-        # Event Handlers
+        # Manejadores de Eventos
         chat_msg = multimodal.submit(
             add_message,
             show_progress="hidden",

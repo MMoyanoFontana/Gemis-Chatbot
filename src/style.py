@@ -224,7 +224,7 @@ login_css = """
 """
 
 app_css = """
-/* Custom CSS to adjust Gradio components */
+/* CSS personalizado para ajustar componentes de Gradio */
 .button-icon{
   width:20px;
   height:20px;

@@ -1,5 +1,4 @@
-# src/storage.py
-# Persist only users, chats (with unique thread_id), and files. No messages table.
+# Persistir solo usuarios, chats (con thread_id único) y archivos. No hay tabla de mensajes separada (mensajes en chats).
 from getpass import getpass
 import uuid
 import bcrypt
@@ -10,8 +9,9 @@ import time
 import json
 import hashlib
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any, Union
 
+# Ruta de la base de datos
 DB_PATH = Path(os.getenv("APP_DB_PATH", "app.db"))
 
 SCHEMA = """
@@ -69,19 +69,22 @@ CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id, created_at);
 
 
 def _conn() -> sqlite3.Connection:
+    """Establece conexión con la base de datos."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db() -> None:
+    """Inicializa la base de datos creando las tablas si no existen."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _conn() as c:
         c.executescript(SCHEMA)
 
 
-# ---- Users ----
+# ---- Usuarios ----
 def create_user(username: str, password: str) -> int:
+    """Crea un nuevo usuario con contraseña hasheada."""
     with _conn() as c:
         hash_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
         cur = c.execute(
@@ -92,12 +95,14 @@ def create_user(username: str, password: str) -> int:
 
 
 def get_user_id(username: str) -> Optional[int]:
+    """Obtiene el ID de usuario dado su nombre de usuario."""
     with _conn() as c:
         r = c.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
         return int(r["id"]) if r else None
 
 
-def list_users() -> list[dict]:
+def list_users() -> List[Dict[str, Any]]:
+    """Lista todos los usuarios registrados."""
     with _conn() as c:
         return [
             dict(r)
@@ -107,32 +112,37 @@ def list_users() -> list[dict]:
         ]
 
 
-def list_chats(user_id: int) -> list[dict]:
+def list_chats(user_id: int) -> List[Dict[str, Any]]:
+    """Lista los chats de un usuario específico."""
     q = """SELECT id, title, thread_id, created_at, updated_at 
            FROM chats WHERE user_id=? ORDER BY updated_at DESC"""
     with _conn() as c:
         return [dict(r) for r in c.execute(q, (user_id,)).fetchall()]
 
 
-def get_chat_by_id(id: int) -> Optional[dict]:
+def get_chat_by_id(id: int) -> Optional[Dict[str, Any]]:
+    """Obtiene un chat por su ID numérico."""
     with _conn() as c:
         r = c.execute("SELECT * FROM chats WHERE id=?", (id,)).fetchone()
         return dict(r) if r else None
 
 
-def get_chat_by_thread(thread_id: str) -> Optional[dict]:
+def get_chat_by_thread(thread_id: str) -> Optional[Dict[str, Any]]:
+    """Obtiene un chat por su thread_id."""
     with _conn() as c:
         r = c.execute("SELECT * FROM chats WHERE thread_id=?", (thread_id,)).fetchone()
         return dict(r) if r else None
 
 
 def get_chat_id_by_thread(thread_id: str) -> Optional[int]:
+    """Obtiene el ID numérico de un chat dado su thread_id."""
     with _conn() as c:
         r = c.execute("SELECT id FROM chats WHERE thread_id=?", (thread_id,)).fetchone()
         return r["id"] if r else None
 
 
 def get_last_thread_id_for_user(user_id: int) -> Optional[str]:
+    """Obtiene el thread_id del último chat modificado por el usuario."""
     with _conn() as c:
         r = c.execute(
             "SELECT thread_id FROM chats WHERE user_id=? ORDER BY updated_at DESC",
@@ -142,6 +152,7 @@ def get_last_thread_id_for_user(user_id: int) -> Optional[str]:
 
 
 def create_chat(user_id: int, title: str) -> int:
+    """Crea un nuevo chat y devuelve su ID numérico."""
     now = time.time()
     thread_id = str(uuid.uuid4())
     with _conn() as c:
@@ -152,7 +163,8 @@ def create_chat(user_id: int, title: str) -> int:
         return int(cur.lastrowid)
 
 
-def rename_chat(thread_id: int, title: str) -> None:
+def rename_chat(thread_id: str, title: str) -> None:
+    """Renombra un chat existente."""
     with _conn() as c:
         c.execute(
             "UPDATE chats SET title=?, updated_at=? WHERE thread_id=?",
@@ -160,7 +172,8 @@ def rename_chat(thread_id: int, title: str) -> None:
         )
 
 
-def touch_chat(thread_id: int) -> None:
+def touch_chat(thread_id: str) -> None:
+    """Actualiza la fecha de modificación de un chat."""
     with _conn() as c:
         c.execute(
             "UPDATE chats SET updated_at=? WHERE thread_id=?", (time.time(), thread_id)
@@ -168,14 +181,16 @@ def touch_chat(thread_id: int) -> None:
 
 
 def delete_chat_by_thread(thread_id: str) -> None:
+    """Elimina un chat dado su thread_id."""
     with _conn() as c:
         c.execute("DELETE FROM chats WHERE thread_id=?", (thread_id,))
 
 
-# Messages
+# Mensajes
 def persist_message(
     content: str, role: str, type: str, chat_id: int, thread_id: str
 ) -> int:
+    """Guarda un mensaje en la base de datos."""
     with _conn() as c:
         cur = c.execute(
             "INSERT INTO messages(content, role, type, chat_id, thread_id) "
@@ -185,7 +200,8 @@ def persist_message(
         return int(cur.lastrowid)
 
 
-def load_chat_messages(chat_id: int) -> list[dict]:
+def load_chat_messages(chat_id: int) -> List[Dict[str, Any]]:
+    """Carga todos los mensajes de un chat específico."""
     with _conn() as c:
         r = c.execute(
             """SELECT content, role, type, chat_id, thread_id, created_at 
@@ -195,8 +211,9 @@ def load_chat_messages(chat_id: int) -> list[dict]:
         return [dict(row) for row in r]
 
 
-# ---- Files ----
+# ---- Archivos ----
 def _sha256(path: Path) -> str:
+    """Calcula el hash SHA256 de un archivo."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -205,6 +222,7 @@ def _sha256(path: Path) -> str:
 
 
 def get_sha(id: int) -> str:
+    """Obtiene el hash SHA256 de un archivo guardado."""
     with _conn() as c:
         return c.execute("SELECT sha256 FROM files WHERE id=?", (id,)).fetchone()[
             "sha256"
@@ -216,8 +234,9 @@ def add_file(
     chat_id: int,
     original_name: str,
     stored_path: Path,
-    meta: Optional[dict] = None,
+    meta: Optional[Dict] = None,
 ) -> int:
+    """Registra un nuevo archivo en la base de datos."""
     if meta is None:
         meta = {}
     now = time.time()
@@ -239,7 +258,8 @@ def add_file(
         return int(cur.lastrowid)
 
 
-def get_files_by_chat_id(chat_id: int) -> list[dict]:
+def get_files_by_chat_id(chat_id: int) -> List[Dict[str, Any]]:
+    """Obtiene todos los archivos asociados a un chat."""
     q = """SELECT id, original_name, stored_path, created_at, meta 
             FROM files WHERE chat_id=? ORDER BY created_at DESC"""
     with _conn() as c:
