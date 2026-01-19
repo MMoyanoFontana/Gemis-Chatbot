@@ -10,8 +10,8 @@ Chatbot para **Retrieval Augmented Generation (RAG) y preguntas y respuestas sob
 
 1. Clonar
 ```bash
-git clone https://github.com/MMoyanoFontana/Langchain-chatbot
-cd Langchain-chatbot
+git clone https://github.com/MMoyanoFontana/Gemis-Chatbot
+cd Gemis-Chatbot
 ```
 
 2. (Opción A) Instalar con uv (recomendado)
